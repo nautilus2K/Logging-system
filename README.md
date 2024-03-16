@@ -1,7 +1,7 @@
 # Logging system
 
 **The logging system is a channel-based output mechanism which allows**
-**subsystems to route their text/diagnostic output to various listeners**
+**subsystems to route their text/diagnostic output to various listeners.**
 **This system is designed for Valve games with Squirrel (VScript) language**
 
 ## Functions
