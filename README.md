@@ -26,6 +26,7 @@ void getroottable::UTIL_LogPrintf(const char *MessageFmt, ...)
 ## Usage
 
 To use, place `logsys.nut` in the `.../scripts/vscripts/logsys.nut` folder
+
 **Include:**
 ```C
 IncludeScript("logsys.nut");
