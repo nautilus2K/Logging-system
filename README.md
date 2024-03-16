@@ -6,7 +6,7 @@
 
 ## Functions
 
-```C
+```C++
 // Standart output functions
 void roottable::Msg(const char *MsgFormat, ...)
 void roottable::Warning(const char *MsgFormat, ...)
