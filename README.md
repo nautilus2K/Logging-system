@@ -1,10 +1,10 @@
-#Logging system
+# Logging system
 
 **The logging system is a channel-based output mechanism which allows**
 **subsystems to route their text/diagnostic output to various listeners**
 **This system is designed for Valve games with Squirrel (VScript) language**
 
-##Functions asd
+## Functions
 
 ```C
 // Standart output functions
@@ -23,7 +23,7 @@ void getroottable::ConDMsg(const char *MsgFormat, ...)
 void getroottable::UTIL_LogPrintf(const char *MessageFmt, ...)
 ```
 
-##Usage
+## Usage
 
 To use, place `logsys.nut` in the `.../scripts/vscripts/logsys.nut` folder
 **Include:**
