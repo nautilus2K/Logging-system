@@ -27,6 +27,13 @@ bool roottable::Log_CustomSituationAllows()
 {
   return ( Convars.GetFloat( "z_debug" ).tointeger() );
 }
+
+// File logging
+char* roottable::__CurrentTimeFmt(void);
+
+void roottable::LogFile(const char *sPath, const char *MessageFmt, ...);
+void roottable::DevLogFile(const char *sPath, const char *MessageFmt, ...);
+void roottable::UTIL_LogFilef(const char *sPath, const char *MessageFmt, ...);
 ```
 
 ## Usage
