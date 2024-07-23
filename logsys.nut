@@ -6,6 +6,15 @@
 //				The logging system is a channel-based output mechanism which allows
 //				subsystems to route their text/diagnostic output to various listeners
 //
+// Github:		https://github.com/nautilus2K/Logging-system
+//
+// Version:		1.0.2
+//
+// Changelog:	03/16/2024 v1.0.0 - Released.
+//				07/11/2024 v1.0.1 - Added addinitional to logging into file.
+//				07/23/2024 v1.0.2 - Changed string format in function __CurrentTimeFmt,
+//									added timestamp in function UTIL_LogPrintf.
+//
 //-----------------------------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------------------------
@@ -26,6 +35,7 @@ local LS_ERROR				= 3;	// An error, typically fatal/unrecoverable
 local gl_StreamEnabled		= true;
 local gl_UtilLogEnabled		= false;						// UTIL_LogPrintf will be work
 pRoot						<- getroottable().weakref();	// Just weak reference to sq root table
+pRoot.AddTimestamp			<- true;						// Add timestamp in start of log message
 
 //-----------------------------------------
 // Initial local functions for logs
@@ -238,9 +248,124 @@ function pRoot::UTIL_LogPrintf( MessageFmt, ... )
 {
 	if ( ( LogDev() >= LOG_DEVELOPER_VERBOSE && gl_UtilLogEnabled ) || Log_CustomSituationAllows() )
 	{
-		local argslist = [ this, MessageFmt ];
+		local argslist = [ this, ( __CurrentTimeFmt() + ": " + MessageFmt ) ];
 		argslist.extend( vargv );
 		LogMsg( format.acall( argslist ) );
 	}
 }
 
+//------------------------------------------------------------------------------------------
+// Functions to logging into file
+//------------------------------------------------------------------------------------------
+
+if ( !( "GetDateFromConsole" in pRoot ) )
+{
+	// Taken from Speedrunner Tools by Shad0w
+	function pRoot::GetDateFromConsole( table )
+	{
+		/*
+			Since in the VScript base there weren't defined any Squirrel's original date() or time(), thus get unix from the local time.
+			Unfortunately, we cannot properly get local time until TLS update, only with certain difficulties. Also, legacy method
+			won't work after 2.1.5.5 for some reason (because 'con_logfile' no longer functional?).
+		*/
+		if ("LocalTime" in getroottable())	//TLS clue
+		{
+			//wrapper to needed format
+			LocalTime(table);
+			table.min <- minute;
+			table.sec <- second;
+		}
+		else
+		{
+			local sFileData = FileToString("st_config/dump/logs_total.txt");
+			if (sFileData == null)
+			{
+				StringToFile("st_config/dump/logs_total.txt", "1");
+				sFileData = "1";
+			}
+			local logs_total = sFileData;
+			Convars.SetValue("con_timestamp", 1);
+			Convars.SetValue("con_logfile", "ems/st_config/dump/timestamp_" + sFileData + ".txt"); printl("");
+			Convars.SetValue("con_logfile", "");
+			Convars.SetValue("con_timestamp", 0);
+			sFileData = FileToString("st_config/dump/timestamp_" + sFileData + ".txt");
+			local length = sFileData.len();
+			if (length >= 15720) StringToFile("st_config/dump/logs_total.txt", "" + (logs_total.tointeger() + 1)); //655 total entries until error
+			sFileData = split(sFileData.slice(length - 24, length - 3), " - ");
+			local date = split(sFileData[0], "/"); local clock = split(sFileData[1], ":");
+			table.day <- date[1].tointeger(); table.month <- date[0].tointeger(); table.year <- date[2].tointeger();
+			table.hour <- clock[0].tointeger(); table.min <- clock[1].tointeger(); table.sec <- clock[2].tointeger();
+		}
+	}
+}
+
+function pRoot::__CurrentTimeFmt()
+{
+	if ( !( "__curtimefmt_calltime" in pRoot ) )
+	{
+		::__curtimefmt_calltime <- 0.0;
+		::__curtimefmt_lastres <- "";
+	}
+	
+	// Prevent this function from being called every frame.
+	// In the pre-TLS version, we cannot find out the time using the Source engine utilities, 
+	// so we find out this through the console command.
+	// Due to operations on strings every frame, spikes will occur periodically!
+	if ( 1.0 <= ( Time() - __curtimefmt_calltime ) )
+	{
+		__curtimefmt_calltime = Time();
+		local tm = {};
+		GetDateFromConsole( tm );
+		__curtimefmt_lastres = format( "L %.02d/%.02d/%d - %.02d:%.02d:%.02d", tm.month, tm.day, tm.year, tm.hour, tm.min, tm.sec );
+		return __curtimefmt_lastres;
+	}
+	return __curtimefmt_lastres; // Last call time less than 1.0
+}
+
+local __common_LogFile = function( sPath, AddTimestamp, MessageFmt, args )
+{
+	
+	local str_stream = "";
+	if ( AddTimestamp )
+		str_stream += __CurrentTimeFmt() + ": ";
+	str_stream += MessageFmt;
+	
+	local fmtargs = [ this, str_stream ];
+	fmtargs.extend( args );
+	str_stream = format.acall( fmtargs );
+	if ( str_stream )
+	{
+		local str_file = FileToString( sPath );
+		if ( str_file != null )
+		{
+			local file_len = str_file.len();
+			if ( 16384 <= file_len + str_stream.len() )
+			{
+				print( "__common_LogFile: File data cannot be more than 16384 bytes, writing a file from scratch.\n" );
+				StringToFile( sPath, "" );
+				str_file = "";
+			}
+			str_file += str_stream;
+		}
+		else str_file = str_stream;
+		StringToFile( sPath, str_file + "\n" );
+	}
+}
+
+function pRoot::LogFile( sPath, MessageFmt, ... )
+{
+	if ( sPath != null && MessageFmt != null || Log_CustomSituationAllows() )
+		__common_LogFile( sPath, pRoot.AddTimestamp, MessageFmt, vargv );
+}
+
+function pRoot::DevLogFile( sPath, MessageFmt, ... )
+{
+	if ( sPath != null && MessageFmt != null && LogDev() != 0 || Log_CustomSituationAllows() )
+		__common_LogFile( sPath, pRoot.AddTimestamp, MessageFmt, vargv );
+}
+
+function pRoot::UTIL_LogFilef( sPath, MessageFmt, ... )
+{
+	if ( sPath != null && MessageFmt != null && LogDev() >= LOG_DEVELOPER_VERBOSE && gl_UtilLogEnabled || Log_CustomSituationAllows() )
+		__common_LogFile( sPath, pRoot.AddTimestamp, MessageFmt, vargv );
+}
