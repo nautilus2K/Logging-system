@@ -8,12 +8,13 @@
 //
 // Github:		https://github.com/nautilus2K/Logging-system
 //
-// Version:		1.0.2
+// Version:		1.0.3
 //
 // Changelog:	03/16/2024 v1.0.0 - Released.
 //				07/11/2024 v1.0.1 - Added addinitional to logging into file.
 //				07/23/2024 v1.0.2 - Changed string format in function __CurrentTimeFmt,
 //									added timestamp in function UTIL_LogPrintf.
+//				10/19/2024 v1.0.3 - Added file rotate.
 //
 //-----------------------------------------------------------------------------------------------
 
@@ -35,7 +36,8 @@ local LS_ERROR				= 3;	// An error, typically fatal/unrecoverable
 local gl_StreamEnabled		= true;
 local gl_UtilLogEnabled		= false;						// UTIL_LogPrintf will be work
 pRoot						<- getroottable().weakref();	// Just weak reference to sq root table
-pRoot.AddTimestamp			<- true;						// Add timestamp in start of log message
+pRoot.bAddTimestamp			<- true;						// Add timestamp in start of log message
+pRoot.bEnableFileRotate		<- true;						// Enable file rotate, make copy with old date
 
 //-----------------------------------------
 // Initial local functions for logs
@@ -339,10 +341,28 @@ local __common_LogFile = function( sPath, AddTimestamp, MessageFmt, args )
 		if ( str_file != null )
 		{
 			local file_len = str_file.len();
-			if ( 16384 <= file_len + str_stream.len() )
+			// print( format( "__common_LogFile: Debug: File length %u\n", file_len ) );
+			if ( file_len + str_stream.len() >= ( 16384 - 255 ) )
 			{
-				print( "__common_LogFile: File data cannot be more than 16384 bytes, writing a file from scratch.\n" );
-				StringToFile( sPath, "" );
+				if ( !pRoot.bEnableFileRotate )
+				{
+					print( "__common_LogFile: File data cannot be more than 16384 bytes, writing a file from scratch.\n" );
+					StringToFile( sPath, "" );
+				}
+				else 
+				{
+					local fname = sPath;
+					local fnameold = null;
+					if ( 0 )
+					{
+						local i = sPath.len() - 1;
+						while ( sPath[i] != '/' || sPath[i] != '\\' ) { i--; }
+						fname = sPath.slice( i + 1, sPath.len() );
+					}
+					fnameold = sPath + format( ".%f", RandomFloat( 0.0000000, 1024.0000000 ) ); // You have another idea?
+					print( format( "__common_LogFile: Rotating file '%s' to '%s'.\n", fname, fnameold ) );
+					StringToFile( fnameold, str_file );
+				}
 				str_file = "";
 			}
 			str_file += str_stream;
@@ -355,17 +375,17 @@ local __common_LogFile = function( sPath, AddTimestamp, MessageFmt, args )
 function pRoot::LogFile( sPath, MessageFmt, ... )
 {
 	if ( sPath != null && MessageFmt != null || Log_CustomSituationAllows() )
-		__common_LogFile( sPath, pRoot.AddTimestamp, MessageFmt, vargv );
+		__common_LogFile( sPath, pRoot.bAddTimestamp, MessageFmt, vargv );
 }
 
 function pRoot::DevLogFile( sPath, MessageFmt, ... )
 {
 	if ( sPath != null && MessageFmt != null && LogDev() != 0 || Log_CustomSituationAllows() )
-		__common_LogFile( sPath, pRoot.AddTimestamp, MessageFmt, vargv );
+		__common_LogFile( sPath, pRoot.bAddTimestamp, MessageFmt, vargv );
 }
 
 function pRoot::UTIL_LogFilef( sPath, MessageFmt, ... )
 {
 	if ( sPath != null && MessageFmt != null && LogDev() >= LOG_DEVELOPER_VERBOSE && gl_UtilLogEnabled || Log_CustomSituationAllows() )
-		__common_LogFile( sPath, pRoot.AddTimestamp, MessageFmt, vargv );
+		__common_LogFile( sPath, pRoot.bAddTimestamp, MessageFmt, vargv );
 }
