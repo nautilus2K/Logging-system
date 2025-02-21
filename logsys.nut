@@ -35,6 +35,7 @@ local LS_ERROR				= 3;	// An error, typically fatal/unrecoverable
 
 local gl_StreamEnabled		= true;
 local gl_UtilLogEnabled		= false;						// UTIL_LogPrintf will be work
+local gl_LogSysInit			= false;						// For log into file.
 pRoot						<- getroottable().weakref();	// Just weak reference to sq root table
 pRoot.bAddTimestamp			<- true;						// Add timestamp in start of log message
 pRoot.bEnableFileRotate		<- true;						// Enable file rotate, make copy with old date
@@ -257,8 +258,41 @@ function pRoot::UTIL_LogPrintf( MessageFmt, ... )
 }
 
 //------------------------------------------------------------------------------------------
-// Functions to logging into file
+// Functions to logging into file.
+//
+// To create good file rotating, we need few functions:
+//
+// bool LogSysInit(void) - Initialize logging system, should be initialized
+//    before first logsys function call (at least functions for writing to a file).
+//    Should be read cache;
+//
+// int LogSysFileIsRotated(const char *sPath) - Checking file rotated by postfix
+//    'file_name' + 'i' + '.format', where file_name - omg file name, i - rotate
+//    number, .format - file format (e.g. .txt, .nut). Function return rotate count,
+//    if file was rotated, otherwise -1, if not.
+//
+// void LogSysWriteCache(void?) - Write cache, where will be stored file name which
+//    was rotated.
+//
+// void LogSysReadCache(void) - 
+//
+// Also we will be check logsys was initialized or not, we create static variable 
+// 'gl_LogSysInit' now only for files.
 //------------------------------------------------------------------------------------------
+
+// TODO: Implement..
+function pRoot::LogSysInit()
+{
+	if (!gl_LogSysInit)
+	{
+		local t = LogSysRestoreFRCache();
+		if (t)
+		{
+			gl_FileRotateList = t;
+			gl_LogSysInit = true;
+		}
+	}
+}
 
 if ( !( "GetDateFromConsole" in pRoot ) )
 {
