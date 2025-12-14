@@ -6,15 +6,20 @@
 //				The logging system is a channel-based output mechanism which allows
 //				subsystems to route their text/diagnostic output to various listeners
 //
-// Github:		https://github.com/nautilus2K/Logging-system
+// GitHub:		https://github.com/nautilus2K/Logging-system
 //
-// Version:		1.0.3
+// Version:		1.0.4
 //
-// Changelog:	03/16/2024 v1.0.0 - Released.
-//				07/11/2024 v1.0.1 - Added addinitional to logging into file.
+// ChangeLog:	03/16/2024 v1.0.0 - Released.
+//				07/11/2024 v1.0.1 - Added additional to logging into file.
 //				07/23/2024 v1.0.2 - Changed string format in function __CurrentTimeFmt,
 //									added timestamp in function UTIL_LogPrintf.
 //				10/19/2024 v1.0.3 - Added file rotate.
+//				12/09/2025 v1.0.4 - File rotate was fixed i.e. new file is now created as
+//									needed. Previously, if the original file was full, the
+//									system always created a new one:
+//												(file_name.txt.<RANDOM-FLOAT>)
+//									Also I add tests for all functions.
 //
 //-----------------------------------------------------------------------------------------------
 
@@ -25,13 +30,15 @@
 
 local LOG_GENERAL			= -2;	// Default logging channel, with a level < 1
 local LOG_CONSOLE			= 0;	// Default logging channel, with a level < 1
-local LOG_DEVELOPER_CONSOLE	= -1;	// Developer only channle, with a level < 0
-local LOG_DEVELOPER			= 1;	// Developer only channle, with a level >= 1
-local LOG_DEVELOPER_VERBOSE	= 2;	// Developer only channle, with a level >= 2
+local LOG_DEVELOPER_CONSOLE	= -1;	// Developer only channel, with a level < 0
+local LOG_DEVELOPER			= 1;	// Developer only channel, with a level >= 1
+local LOG_DEVELOPER_VERBOSE	= 2;	// Developer only channel, with a level >= 2
 
 local LS_MESSAGE			= 0;	// An informative logging message
 local LS_WARNING			= 1;	// A warning, typically non-fatal
 local LS_ERROR				= 3;	// An error, typically fatal/unrecoverable
+
+local FILE_READ_MAX_SIZE	= 16384;						// Max size of file which FileToString can read
 
 local gl_StreamEnabled		= true;
 local gl_UtilLogEnabled		= false;						// UTIL_LogPrintf will be work
@@ -58,7 +65,7 @@ local LogMsg = function( fmt )
 local LogWarn = function( fmt )
 {
 	if ( gl_StreamEnabled )
-		error( fmt + "\n" );					// Red color. @TODO: How i can do orange color for warning message?
+		error( fmt + "\n" );					// Red color. TODO: How i can do orange color for warning message?
 }
 
 local LogCon = function( fmt )
@@ -257,42 +264,9 @@ function pRoot::UTIL_LogPrintf( MessageFmt, ... )
 	}
 }
 
-//------------------------------------------------------------------------------------------
-// Functions to logging into file.
-//
-// To create good file rotating, we need few functions:
-//
-// bool LogSysInit(void) - Initialize logging system, should be initialized
-//    before first logsys function call (at least functions for writing to a file).
-//    Should be read cache;
-//
-// int LogSysFileIsRotated(const char *sPath) - Checking file rotated by postfix
-//    'file_name' + 'i' + '.format', where file_name - omg file name, i - rotate
-//    number, .format - file format (e.g. .txt, .nut). Function return rotate count,
-//    if file was rotated, otherwise -1, if not.
-//
-// void LogSysWriteCache(void?) - Write cache, where will be stored file name which
-//    was rotated.
-//
-// void LogSysReadCache(void) - 
-//
-// Also we will be check logsys was initialized or not, we create static variable 
-// 'gl_LogSysInit' now only for files.
-//------------------------------------------------------------------------------------------
-
-// TODO: Implement..
-function pRoot::LogSysInit()
-{
-	if (!gl_LogSysInit)
-	{
-		local t = LogSysRestoreFRCache();
-		if (t)
-		{
-			gl_FileRotateList = t;
-			gl_LogSysInit = true;
-		}
-	}
-}
+//------------------------------------------------
+// Logging into file.
+//------------------------------------------------
 
 if ( !( "GetDateFromConsole" in pRoot ) )
 {
@@ -300,7 +274,7 @@ if ( !( "GetDateFromConsole" in pRoot ) )
 	function pRoot::GetDateFromConsole( table )
 	{
 		/*
-			Since in the VScript base there weren't defined any Squirrel's original date() or time(), thus get unix from the local time.
+			Since in the VScript base there weren't defined any Squirrel's original date() or time(), thus get Unix from the local time.
 			Unfortunately, we cannot properly get local time until TLS update, only with certain difficulties. Also, legacy method
 			won't work after 2.1.5.5 for some reason (because 'con_logfile' no longer functional?).
 		*/
@@ -358,9 +332,41 @@ function pRoot::__CurrentTimeFmt()
 	return __curtimefmt_lastres; // Last call time less than 1.0
 }
 
+function pRoot::Log_IsExistFile( sFileName = null )
+{
+	if ( !sFileName ) return print( "Log_IsExistFile: File name is nullptr.\n" );
+	local sContent = FileToString( sFileName );
+	return sContent ? true : false;
+}
+
+function pRoot::Log_ParseFilePath( sPath )
+{
+	if ( !sPath ) return print( "Log_ParseFilePath: File path is nullptr.\n" );
+	local table = { file_name = "", file_ext = "" };
+	local i = sPath.len() - 1;
+	local buf = "";
+	while ( i >= 0 )
+	{
+		local c = sPath[ i ].to_char();
+		if ( c != "." )
+		{
+			i--;
+			buf += c;
+			continue;
+		}
+		
+		return { file_name = sPath.slice( 0, i ), file_ext = buf }
+	}
+	
+	// Check if we not found '.'
+	if ( i < 0 )
+		return { file_name = sPath, file_ext = "" }
+	
+	throw "Log_ParseFilePath: unreachable";
+}
+
 local __common_LogFile = function( sPath, AddTimestamp, MessageFmt, args )
 {
-	
 	local str_stream = "";
 	if ( AddTimestamp )
 		str_stream += __CurrentTimeFmt() + ": ";
@@ -371,38 +377,50 @@ local __common_LogFile = function( sPath, AddTimestamp, MessageFmt, args )
 	str_stream = format.acall( fmtargs );
 	if ( str_stream )
 	{
-		local str_file = FileToString( sPath );
-		if ( str_file != null )
+		local file_data = FileToString( sPath );
+		if ( file_data != null )
 		{
-			local file_len = str_file.len();
-			// print( format( "__common_LogFile: Debug: File length %u\n", file_len ) );
-			if ( file_len + str_stream.len() >= ( 16384 - 255 ) )
+			local file_len = file_data.len();
+			DevMsg( 1,  "__common_LogFile: Debug: File length %u\n", file_len );
+			if ( file_len + str_stream.len() >= ( FILE_READ_MAX_SIZE - 255 ) )
 			{
 				if ( !pRoot.bEnableFileRotate )
 				{
-					print( "__common_LogFile: File data cannot be more than 16384 bytes, writing a file from scratch.\n" );
-					StringToFile( sPath, "" );
+					Warning( "__common_LogFile: File data cannot be more than 16 KiB, writing a file from scratch.\n" );
+					file_data = "";
 				}
 				else 
 				{
-					local fname = sPath;
-					local fnameold = null;
-					if ( 0 )
+					local path = Log_ParseFilePath( sPath );
+					local latest_file = null;
+					local rotate_num = 0;
+					
+					do
 					{
-						local i = sPath.len() - 1;
-						while ( sPath[i] != '/' || sPath[i] != '\\' ) { i--; }
-						fname = sPath.slice( i + 1, sPath.len() );
-					}
-					fnameold = sPath + format( ".%f", RandomFloat( 0.0000000, 1024.0000000 ) ); // You have another idea?
-					print( format( "__common_LogFile: Rotating file '%s' to '%s'.\n", fname, fnameold ) );
-					StringToFile( fnameold, str_file );
+						local maybe_rotated = path.file_name + "-" + rotate_num + path.file_ext;
+						latest_file = Log_IsExistFile( maybe_rotated );
+						if ( latest_file )
+						{
+							if ( !( FileToString( maybe_rotated ).len() + str_stream.len() >= FILE_READ_MAX_SIZE - 255 ) )
+								continue;
+							
+							sPath = maybe_rotated;
+							file_data = FileToString( maybe_rotated );
+							break;
+						}
+						else
+						{
+							sPath = maybe_rotated; // Name for new file
+							file_data = "";
+							break;
+						}
+					} while ( ++rotate_num );
 				}
-				str_file = "";
 			}
-			str_file += str_stream;
+			file_data += str_stream;
 		}
-		else str_file = str_stream;
-		StringToFile( sPath, str_file + "\n" );
+		else file_data = str_stream;
+		StringToFile( sPath, file_data + "\n" );
 	}
 }
 
@@ -423,3 +441,4 @@ function pRoot::UTIL_LogFilef( sPath, MessageFmt, ... )
 	if ( sPath != null && MessageFmt != null && LogDev() >= LOG_DEVELOPER_VERBOSE && gl_UtilLogEnabled || Log_CustomSituationAllows() )
 		__common_LogFile( sPath, pRoot.bAddTimestamp, MessageFmt, vargv );
 }
+
