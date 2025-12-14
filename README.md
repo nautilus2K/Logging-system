@@ -31,6 +31,8 @@ bool roottable::Log_CustomSituationAllows()
 // File logging
 char* roottable::__CurrentTimeFmt(void);
 
+bool roottable::Log_IsExistFile(const char *sFileName);
+pair<char *, char *> roottable::Log_ParseFilePath(const char *sPath);
 void roottable::LogFile(const char *sPath, const char *MessageFmt, ...);
 void roottable::DevLogFile(const char *sPath, const char *MessageFmt, ...);
 void roottable::UTIL_LogFilef(const char *sPath, const char *MessageFmt, ...);
@@ -44,3 +46,4 @@ To use, place `logsys.nut` in the `.../scripts/vscripts/logsys.nut` folder
 ```C
 IncludeScript("logsys.nut");
 ```
+
